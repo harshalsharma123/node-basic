@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "joi": "^17.13.3",
+    "nodemon": "^3.1.10",
+    "uuid": "^11.1.0"
+  },
+  "scripts": {
+    "start": "nodemon index.js"
+  }
+}
