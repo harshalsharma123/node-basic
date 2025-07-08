@@ -2,6 +2,10 @@ const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 const { sendResponse } = require("../utils/response");
 const userSchema = require("../validators/userValidator");
+const validateSchema = require("../utils/validate");
+const userSchema2 = require("../validators/userSchema");
+const db = require("../db/db");
+const authMiddleware = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
@@ -27,8 +31,10 @@ function isValidEmail(email) {
 }
 
 // Getting the list of users from the mock database
-router.get("/", (req, res) => {
-  return sendResponse(res, 200, "Users retrieved successfully", users);
+router.get("/", authMiddleware, async (req, res) => {
+  const [rows] = await db.query("SELECT * FROM users");
+  // return sendResponse(res, 200, "Users retrieved successfully", users);
+  return sendResponse(res, 200, "Users retrieved successfully", rows);
 });
 
 // with manually validations ----------------
@@ -76,47 +82,117 @@ router.get("/", (req, res) => {
 //   sendResponse(res, 200, "User updated successfully");
 // });
 
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
-  users = users.filter((user) => user.id !== id);
+  // users = users.filter((user) => user.id !== id);
+  await db.query("DELETE FROM users WHERE id = ?", [id]);
 
   sendResponse(res, 200, "User deleted successfully");
 });
 
 // with joi validations ----------------
-router.post("/", (req, res) => {
-  const { error, value } = userSchema.validate(req.body, {
-    abortEarly: false,
-    stripUnknown: true,
-  });
+// router.post("/", (req, res) => {
+//   const { error, value } = userSchema.validate(req.body, {
+//     abortEarly: false,
+//     stripUnknown: true,
+//   });
 
-  if (error) {
-    const messages = error.details.map((err) => err.message);
+//   if (error) {
+//     const messages = error.details.map((err) => err.message);
+//     return sendResponse(res, 400, "Validation failed", { errors: messages });
+//   }
+
+//   const { email } = value;
+//   const emailExists = users.some((u) => u.email === email);
+
+//   if (emailExists) {
+//     return sendResponse(res, 400, "User with this email already exists");
+//   }
+
+//   const newUser = { ...value, id: uuidv4() };
+//   users.push(newUser);
+
+//   return sendResponse(res, 200, "User added successfully", newUser);
+// });
+
+// router.patch("/:id", (req, res) => {
+//   const { error, value } = userSchema.validate(req.body, {
+//     abortEarly: false,
+//     stripUnknown: true,
+//   });
+
+//   if (error) {
+//     const messages = error.details.map((err) => err.message);
+//     return sendResponse(res, 400, "Validation failed", { errors: messages });
+//   }
+
+//   const { id } = req.params;
+
+//   const { first_name, last_name, email } = req.body;
+
+//   if (email) {
+//     const emailExists = users.some((u) => u.email === email && u.id !== id);
+//     if (emailExists) {
+//       return sendResponse(
+//         res,
+//         400,
+//         "Another user with this email already exists"
+//       );
+//     }
+//   }
+
+//   const user = users.find((user) => user.id === id);
+
+//   if (first_name) user.first_name = first_name;
+//   if (last_name) user.last_name = last_name;
+//   if (email) user.email = email;
+
+//   sendResponse(res, 200, "User updated successfully");
+// });
+
+// with AJV validations ----------------
+router.post("/", async (req, res) => {
+  const { valid, errors } = validateSchema(userSchema2, req.body);
+
+  if (!valid) {
+    const messages = errors.map(
+      (e) =>
+        `${e.instancePath.replace("/", "") || e.params.missingProperty} ${
+          e.message
+        }`
+    );
     return sendResponse(res, 400, "Validation failed", { errors: messages });
   }
 
-  const { email } = value;
-  const emailExists = users.some((u) => u.email === email);
+  const [users] = await db.query("SELECT * FROM users");
 
+  const emailExists = users.some((u) => u.email === req.body.email);
   if (emailExists) {
     return sendResponse(res, 400, "User with this email already exists");
   }
 
-  const newUser = { ...value, id: uuidv4() };
-  users.push(newUser);
+  const newUser = { ...req.body, id: uuidv4() };
+  const { first_name, last_name, email, id } = newUser;
+  // users.push(newUser);
 
-  return sendResponse(res, 201, "User added successfully", newUser);
+  await db.query(
+    "INSERT INTO users (id, first_name, last_name, email) VALUES (?, ?, ?, ?)",
+    [id, first_name, last_name, email]
+  );
+  return sendResponse(res, 200, "User added successfully", newUser);
 });
 
-router.patch("/:id", (req, res) => {
-  const { error, value } = userSchema.validate(req.body, {
-    abortEarly: false,
-    stripUnknown: true,
-  });
+router.patch("/:id", async (req, res) => {
+  const { valid, errors } = validateSchema(userSchema2, req.body);
 
-  if (error) {
-    const messages = error.details.map((err) => err.message);
+  if (!valid) {
+    const messages = errors.map(
+      (e) =>
+        `${e.instancePath.replace("/", "") || e.params.missingProperty} ${
+          e.message
+        }`
+    );
     return sendResponse(res, 400, "Validation failed", { errors: messages });
   }
 
@@ -125,6 +201,8 @@ router.patch("/:id", (req, res) => {
   const { first_name, last_name, email } = req.body;
 
   if (email) {
+    const [users] = await db.query("SELECT * FROM users");
+
     const emailExists = users.some((u) => u.email === email && u.id !== id);
     if (emailExists) {
       return sendResponse(
@@ -135,11 +213,16 @@ router.patch("/:id", (req, res) => {
     }
   }
 
-  const user = users.find((user) => user.id === id);
+  await db.query(
+    "UPDATE users SET first_name = ?, last_name = ?, email = ? WHERE id = ?",
+    [first_name, last_name, email, id]
+  );
 
-  if (first_name) user.first_name = first_name;
-  if (last_name) user.last_name = last_name;
-  if (email) user.email = email;
+  // const user = users.find((user) => user.id === id);
+
+  // if (first_name) user.first_name = first_name;
+  // if (last_name) user.last_name = last_name;
+  // if (email) user.email = email;
 
   sendResponse(res, 200, "User updated successfully");
 });

@@ -1,6 +1,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const userRoutes = require("./routes/users.js");
+const loginRoutes = require("./routes/login.js");
 const cors = require("cors");
 
 const app = express();
@@ -15,6 +16,7 @@ app.use(bodyParser.json()); // to parse incoming JSON requests
 app.use(cors()); // ✅ enable all CORS requests
 
 app.use("/users", userRoutes);
+app.use("/login", loginRoutes);
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Server running on http://0.0.0.0:5000");
