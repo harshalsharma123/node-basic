@@ -6,6 +6,7 @@ const validateSchema = require("../utils/validate");
 const userSchema2 = require("../validators/userSchema");
 const db = require("../db/db");
 const authMiddleware = require("../middlewares/authMiddleware");
+const bcrypt = require("bcryptjs");
 
 const router = express.Router();
 
@@ -172,13 +173,20 @@ router.post("/", async (req, res) => {
     return sendResponse(res, 400, "User with this email already exists");
   }
 
-  const newUser = { ...req.body, id: uuidv4() };
-  const { first_name, last_name, email, id } = newUser;
+  // const newUser = { ...req.body, id: uuidv4() };
+
+  // const { first_name, last_name, email, id, password } = newUser;
+  const newUser = { ...req.body };
+
+  const { first_name, last_name, email, password } = newUser;
+
+  const hashedPassword = await bcrypt.hash(password, 10); // 10 salt rounds
+
   // users.push(newUser);
 
   await db.query(
-    "INSERT INTO users (id, first_name, last_name, email) VALUES (?, ?, ?, ?)",
-    [id, first_name, last_name, email]
+    "INSERT INTO users (first_name, last_name, email, password) VALUES (?, ?, ?, ?)",
+    [first_name, last_name, email, hashedPassword]
   );
   return sendResponse(res, 200, "User added successfully", newUser);
 });
@@ -198,12 +206,14 @@ router.patch("/:id", async (req, res) => {
 
   const { id } = req.params;
 
-  const { first_name, last_name, email } = req.body;
+  const { first_name, last_name, email, password } = req.body;
+
+  const hashedPassword = await bcrypt.hash(password, 10); // 10 salt rounds
 
   if (email) {
     const [users] = await db.query("SELECT * FROM users");
 
-    const emailExists = users.some((u) => u.email === email && u.id !== id);
+    const emailExists = users.some((u) => u.email === email && u.id != id);
     if (emailExists) {
       return sendResponse(
         res,
@@ -214,8 +224,8 @@ router.patch("/:id", async (req, res) => {
   }
 
   await db.query(
-    "UPDATE users SET first_name = ?, last_name = ?, email = ? WHERE id = ?",
-    [first_name, last_name, email, id]
+    "UPDATE users SET first_name = ?, last_name = ?, email = ?, password = ? WHERE id = ?",
+    [first_name, last_name, email, hashedPassword, id]
   );
 
   // const user = users.find((user) => user.id === id);
